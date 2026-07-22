@@ -55,37 +55,56 @@ st.markdown("""
 # 데이터 수집 및 전처리 함수
 # ==============================================================================
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_realtime_etf_data() -> Tuple[pd.DataFrame, str]:
-    """네이버 금융 API로부터 실시간 ETF 데이터를 조회하고 전처리합니다.
+def fetch_realtime_etf_data() -> Tuple[pd.DataFrame, str, bool]:
+    """네이버 금융 API 및 로컬 캐시로부터 ETF 데이터를 조회하고 전처리합니다.
 
     Returns:
-        Tuple[pd.DataFrame, str]: 전처리된 데이터프레임과 수집 시각 문자열.
-
-    Raises:
-        requests.RequestException: API 호출 실패 시 발생.
+        Tuple[pd.DataFrame, str, bool]: (전처리 데이터프레임, 수집 시각, API 직수집 여부)
     """
     url: str = "https://finance.naver.com/api/sise/etfItemList.nhn?etfType=0&targetColumn=market_sum&sortOrder=desc"
     headers: Dict[str, str] = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        )
+            "Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://finance.naver.com/sise/etf.naver"
     }
     
-    # API 요청 실행
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
-    response.encoding = 'euc-kr'
-    
-    data: Dict[str, Any] = response.json()
-    items: list[dict] = data.get("result", {}).get("etfItemList", [])
-    
+    is_live_api: bool = True
+    items: list[dict] = []
+    fetch_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 1차 시도: 네이버 금융 실시간 API 호출 (타임아웃 5초 설정)
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        response.encoding = 'euc-kr'
+        data: Dict[str, Any] = response.json()
+        items = data.get("result", {}).get("etfItemList", [])
+    except (requests.RequestException, Exception) as e:
+        # API 타임아웃 또는 접속 차단 시 2차 시도: 로컬 저장 데이터(data/latest.json 및 CSV) 폴백
+        is_live_api = False
+        json_path = os.path.join("data", "latest.json")
+        csv_path = os.path.join("data", "etf_items_latest.csv")
+        
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+                items = payload.get("items", [])
+                fetch_time = payload.get("fetched_at", fetch_time) + " (저장된 백업 데이터)"
+        elif os.path.exists(csv_path):
+            df_csv = pd.read_csv(csv_path)
+            items = df_csv.to_dict(orient="records")
+            fetch_time = "저장된 CSV 백업 데이터"
+        else:
+            print(f"[Warning] API 접속 실패 및 백업 데이터 부재: {e}")
+            return pd.DataFrame(), fetch_time, False
+
     if not items:
-        return pd.DataFrame(), datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return pd.DataFrame(), fetch_time, False
     
     df: pd.DataFrame = pd.DataFrame(items)
-    fetch_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # 데이터 타입 캐스팅 및 파생 변수 생성
     df['itemcode'] = df['itemcode'].astype(str)
@@ -132,7 +151,7 @@ def fetch_realtime_etf_data() -> Tuple[pd.DataFrame, str]:
     }
     df['category'] = df['etfTabCode'].map(tab_code_map).fillna('기타/미분류')
 
-    return df, fetch_time
+    return df, fetch_time, is_live_api
 
 
 # ================= ============================================================
@@ -147,14 +166,17 @@ def main() -> None:
     # 데이터 로딩
     try:
         with st.spinner("네이버 금융 API에서 실시간 ETF 데이터 로딩 중..."):
-            df, fetch_time = fetch_realtime_etf_data()
+            df, fetch_time, is_live_api = fetch_realtime_etf_data()
     except Exception as e:
-        st.error(f"실시간 데이터 로딩 중 오류가 발생했습니다: {e}")
+        st.error(f"데이터 로딩 중 오류가 발생했습니다: {e}")
         return
 
     if df.empty:
         st.warning("수집된 ETF 데이터가 없습니다.")
         return
+
+    if not is_live_api:
+        st.info("ℹ️ 네이버 API 연결 시간이 초과되어 최신 저장 백업 데이터(data/latest.json)를 로드하여 대시보드를 표시합니다.")
 
     # 새로고침 버튼
     if st.sidebar.button("🔄 데이터 즉시 새로고침", use_container_width=True):
