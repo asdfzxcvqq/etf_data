@@ -1,0 +1,8 @@
+# Streamlit 배포를 위한 핵심 라이브러리 목록
+streamlit>=1.30.0
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.30.0
+plotly>=5.18.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
