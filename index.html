@@ -484,39 +484,81 @@
         margin: { t: 30, b: 40, l: 120, r: 20 }
     };
 
-    // Load Data Strategy (Try data/latest.json -> Fallback API)
+    // Multi-tier Load Data Strategy
     async function loadData() {
         const timestampBadge = document.getElementById('lastUpdated');
         timestampBadge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 로딩 중...';
 
-        try {
-            // 1. Try local data/latest.json
-            let res = await fetch('data/latest.json?t=' + new Date().getTime());
-            if (res.ok) {
-                let data = await res.json();
-                etfRawData = data.items || [];
-                timestampBadge.innerText = `업데이트: ${data.fetched_at || new Date().toLocaleString()}`;
-            } else {
-                throw new Error("latest.json not found");
-            }
-        } catch (e) {
-            console.warn("Local data fetch failed, attempting API fetch...", e);
+        const endpoints = [
+            './data/latest.json?t=' + new Date().getTime(),
+            'data/latest.json?t=' + new Date().getTime(),
+            'https://raw.githubusercontent.com/asdfzxcvqq/etf_data/main/data/latest.json?t=' + new Date().getTime()
+        ];
+
+        let success = false;
+
+        for (let url of endpoints) {
             try {
-                // 2. Direct API Fallback
-                let apiRes = await fetch("https://finance.naver.com/api/sise/etfItemList.nhn?etfType=0&targetColumn=market_sum&sortOrder=desc");
-                let apiData = await apiRes.json();
-                etfRawData = apiData.result?.etfItemList || [];
-                timestampBadge.innerText = `실시간 API: ${new Date().toLocaleTimeString()}`;
-            } catch (err) {
-                timestampBadge.innerText = `오류: 데이터 수집 실패`;
-                console.error("All fetch strategies failed", err);
-                return;
+                let res = await fetch(url);
+                if (res.ok) {
+                    let data = await res.json();
+                    if (data && data.items && data.items.length > 0) {
+                        etfRawData = data.items;
+                        timestampBadge.innerText = `업데이트: ${data.fetched_at || new Date().toLocaleString()}`;
+                        success = true;
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.warn(`Fetch failed for ${url}:`, e);
             }
+        }
+
+        // CSV Raw Fallback if JSON fails
+        if (!success) {
+            try {
+                let csvUrl = 'https://raw.githubusercontent.com/asdfzxcvqq/etf_data/main/data/etf_items_latest.csv?t=' + new Date().getTime();
+                let res = await fetch(csvUrl);
+                if (res.ok) {
+                    let csvText = await res.text();
+                    etfRawData = parseCSV(csvText);
+                    if (etfRawData.length > 0) {
+                        timestampBadge.innerText = `업데이트: 백업 CSV 데이터`;
+                        success = true;
+                    }
+                }
+            } catch (e) {
+                console.error("CSV Fallback failed:", e);
+            }
+        }
+
+        if (!success) {
+            timestampBadge.innerText = `오류: 데이터 수집 실패`;
+            return;
         }
 
         preprocessData();
         populateCategoryFilter();
         filterData();
+    }
+
+    // Simple CSV Parser Fallback
+    function parseCSV(text) {
+        let lines = text.trim().split('\n');
+        if (lines.length < 2) return [];
+        let headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        let list = [];
+        for (let i = 1; i < lines.length; i++) {
+            let row = lines[i].split(',');
+            if (row.length === headers.length) {
+                let obj = {};
+                headers.forEach((h, idx) => {
+                    obj[h] = row[idx].trim().replace(/^"|"$/g, '');
+                });
+                list.push(obj);
+            }
+        }
+        return list;
     }
 
     function preprocessData() {
