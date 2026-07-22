@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>네이버 ETF 실시간 EDA 정적 대시보드</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --glass-bg: rgba(17, 24, 39, 0.75);
+            --glass-card: rgba(30, 41, 59, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-cyan: #38bdf8;
+            --accent-indigo: #818cf8;
+            --accent-green: #34d399;
+            --accent-red: #f43f5e;
+            --accent-yellow: #fbbf24;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: radial-gradient(circle at 15% 15%, #1e1b4b 0%, #0b0f19 50%, #030712 100%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        /* Glassmorphism Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            background: var(--glass-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .header-title h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+        }
+
+        .refresh-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .timestamp-badge {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* KPI Cards Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .kpi-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            padding: 1.25rem;
+            border-radius: 14px;
+            transition: transform 0.2s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+
+        .kpi-title {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .kpi-sub {
+            font-size: 0.8rem;
+            margin-top: 6px;
+        }
+
+        .kpi-sub.up { color: var(--accent-red); }
+        .kpi-sub.down { color: var(--accent-cyan); }
+
+        /* Filter Controls Bar */
+        .controls-bar {
+            background: var(--glass-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            padding: 1rem 1.5rem;
+            border-radius: 14px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.65rem 1rem 0.65rem 2.5rem;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 0.85rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .filter-select {
+            padding: 0.65rem 1rem;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Navigation Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 0.5rem;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.25rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn.active {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        /* Tab Content & Charts */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .chart-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.25rem;
+        }
+
+        .chart-header {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Interactive Data Table */
+        .table-container {
+            overflow-x: auto;
+            max-height: 600px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--accent-cyan);
+            padding: 0.85rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-weight: 600;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .tag-up { color: #f43f5e; font-weight: 600; }
+        .tag-down { color: #38bdf8; font-weight: 600; }
+        .tag-even { color: #94a3b8; }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding: 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--glass-border);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <div class="header-title">
+            <h1><i class="fa-solid fa-chart-line"></i> 네이버 ETF 실시간 EDA 대시보드</h1>
+            <p>GitHub Pages 기반의 실시간 ETF 데이터 분석 및 인터랙티브 탐색 리포트</p>
+        </div>
+        <div class="header-actions">
+            <button class="refresh-btn" id="refreshBtn" onclick="loadData()"><i class="fa-solid fa-rotate-right"></i> 새로고침</button>
+            <div class="timestamp-badge" id="lastUpdated">업데이트: 로딩 중...</div>
+        </div>
+    </header>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title"><span>총 수집 종목 수</span> <i class="fa-solid fa-cubes text-cyan"></i></div>
+            <div class="kpi-value" id="kpiCount">-</div>
+            <div class="kpi-sub" id="kpiCategoryCount">카테고리: -</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title"><span>총 시가총액</span> <i class="fa-solid fa-vault"></i></div>
+            <div class="kpi-value" id="kpiMarketCap">-</div>
+            <div class="kpi-sub" id="kpiMarketCapSub">조 원</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title"><span>총 거래대금</span> <i class="fa-solid fa-money-bill-trend-up"></i></div>
+            <div class="kpi-value" id="kpiAmount">-</div>
+            <div class="kpi-sub" id="kpiAmountSub">억 원</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title"><span>상승 / 하락 종목</span> <i class="fa-solid fa-arrow-trend-up"></i></div>
+            <div class="kpi-value" id="kpiTrend">-</div>
+            <div class="kpi-sub up" id="kpiTrendRatio">상승비율: -%</div>
+        </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+        <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="searchInput" placeholder="ETF 종목명 또는 종목코드 검색..." oninput="filterData()">
+        </div>
+        <select class="filter-select" id="categoryFilter" onchange="filterData()">
+            <option value="ALL">전체 카테고리</option>
+        </select>
+        <button class="refresh-btn" style="background: rgba(255,255,255,0.08); box-shadow: none;" onclick="exportCSV()">
+            <i class="fa-solid fa-download"></i> CSV 다운로드
+        </button>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab1', this)"><i class="fa-solid fa-trophy"></i> 주요 랭킹 (Top 10)</button>
+        <button class="tab-btn" onclick="switchTab('tab2', this)"><i class="fa-solid fa-chart-pie"></i> 시가총액 & 거래량</button>
+        <button class="tab-btn" onclick="switchTab('tab3', this)"><i class="fa-solid fa-scale-balanced"></i> 수익률 & 괴리율</button>
+        <button class="tab-btn" onclick="switchTab('tab4', this)"><i class="fa-solid fa-table"></i> 데이터 Explorer</button>
+    </div>
+
+    <!-- Tab 1: Rankings -->
+    <div id="tab1" class="tab-content active">
+        <div class="chart-grid-2">
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-crown text-yellow"></i> 시가총액 Top 10 (조 원)</div>
+                <div id="chartMarketCapTop10"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-fire text-red"></i> 거래대금 Top 10 (억 원)</div>
+                <div id="chartAmountTop10"></div>
+            </div>
+        </div>
+        <div class="chart-grid-2">
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-rocket"></i> 당일 등락률 상위 Top 10 (%)</div>
+                <div id="chartRiseTop10"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-arrow-down-long"></i> 당일 등락률 하위 Top 10 (%)</div>
+                <div id="chartFallTop10"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Market Cap & Volume -->
+    <div id="tab2" class="tab-content">
+        <div class="chart-grid-2">
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-chart-scatter"></i> 시가총액 vs 거래대금 (버블: 거래량)</div>
+                <div id="chartScatter"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-chart-pie"></i> 카테고리별 시가총액 구성비</div>
+                <div id="chartCategoryPie"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Returns & Disparity -->
+    <div id="tab3" class="tab-content">
+        <div class="chart-grid-2">
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-chart-column"></i> 3개월 수익률 분포 (%)</div>
+                <div id="chartEarnHist"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header"><i class="fa-solid fa-wave-square"></i> NAV 대비 괴리율 분포 (%)</div>
+                <div id="chartDisparityHist"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 4: Explorer Table -->
+    <div id="tab4" class="tab-content">
+        <div class="chart-card">
+            <div class="chart-header"><i class="fa-solid fa-list-check"></i> 전체 ETF 데이터 테이블 (<span id="tableItemCount">0</span>개 종목)</div>
+            <div class="table-container">
+                <table id="etfTable">
+                    <thead>
+                        <tr>
+                            <th>코드</th>
+                            <th>ETF 종목명</th>
+                            <th>카테고리</th>
+                            <th>현재가</th>
+                            <th>전일대비</th>
+                            <th>등락률</th>
+                            <th>NAV</th>
+                            <th>괴리율</th>
+                            <th>시가총액(억)</th>
+                            <th>거래대금(백만)</th>
+                            <th>3개월수익률</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>네이버 금융 Sise API 기반 실시간 데이터 자동 분석 리포트 &copy; 2026. GitHub Pages Deployed.</p>
+    </footer>
+</div>
+
+<script>
+    let etfRawData = [];
+    let filteredData = [];
+
+    // Plotly Dark Layout Base Configuration
+    const plotlyDarkLayout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+        xaxis: { gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+        yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+        margin: { t: 30, b: 40, l: 120, r: 20 }
+    };
+
+    // Load Data Strategy (Try data/latest.json -> Fallback API)
+    async function loadData() {
+        const timestampBadge = document.getElementById('lastUpdated');
+        timestampBadge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 로딩 중...';
+
+        try {
+            // 1. Try local data/latest.json
+            let res = await fetch('data/latest.json?t=' + new Date().getTime());
+            if (res.ok) {
+                let data = await res.json();
+                etfRawData = data.items || [];
+                timestampBadge.innerText = `업데이트: ${data.fetched_at || new Date().toLocaleString()}`;
+            } else {
+                throw new Error("latest.json not found");
+            }
+        } catch (e) {
+            console.warn("Local data fetch failed, attempting API fetch...", e);
+            try {
+                // 2. Direct API Fallback
+                let apiRes = await fetch("https://finance.naver.com/api/sise/etfItemList.nhn?etfType=0&targetColumn=market_sum&sortOrder=desc");
+                let apiData = await apiRes.json();
+                etfRawData = apiData.result?.etfItemList || [];
+                timestampBadge.innerText = `실시간 API: ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                timestampBadge.innerText = `오류: 데이터 수집 실패`;
+                console.error("All fetch strategies failed", err);
+                return;
+            }
+        }
+
+        preprocessData();
+        populateCategoryFilter();
+        filterData();
+    }
+
+    function preprocessData() {
+        const tabMap = { 1: '국내 대표지수', 2: '국내 업종/테마', 3: '국내 파생', 4: '해외 주식', 5: '원자재', 6: '채권/금리', 7: '기타' };
+        etfRawData.forEach(item => {
+            item.nowVal = Number(item.nowVal) || 0;
+            item.changeVal = Number(item.changeVal) || 0;
+            item.changeRate = Number(item.changeRate) || 0;
+            item.nav = Number(item.nav) || 0;
+            item.marketSum = Number(item.marketSum) || 0; // 억원
+            item.quant = Number(item.quant) || 0;
+            item.amonut = Number(item.amonut) || 0; // 백만원
+            item.threeMonthEarnRate = item.threeMonthEarnRate !== undefined ? Number(item.threeMonthEarnRate) : null;
+            item.category = item.category || tabMap[item.etfTabCode] || '기타/미분류';
+            
+            // NAV 괴리율 계산
+            item.disparityRate = (item.nav > 0) ? Number(((item.nowVal - item.nav) / item.nav * 100).toFixed(2)) : null;
+        });
+    }
+
+    function populateCategoryFilter() {
+        const select = document.getElementById('categoryFilter');
+        select.innerHTML = '<option value="ALL">전체 카테고리</option>';
+        const categories = [...new Set(etfRawData.map(i => i.category))].sort();
+        categories.forEach(cat => {
+            let opt = document.createElement('option');
+            opt.value = cat;
+            opt.innerText = cat;
+            select.appendChild(opt);
+        });
+    }
+
+    function filterData() {
+        const search = document.getElementById('searchInput').value.toLowerCase().trim();
+        const category = document.getElementById('categoryFilter').value;
+
+        filteredData = etfRawData.filter(item => {
+            const matchSearch = item.itemname.toLowerCase().includes(search) || item.itemcode.includes(search);
+            const matchCat = (category === 'ALL' || item.category === category);
+            return matchSearch && matchCat;
+        });
+
+        renderKPI();
+        renderCharts();
+        renderTable();
+    }
+
+    function renderKPI() {
+        const count = filteredData.length;
+        const totalCapTrillion = (filteredData.reduce((acc, i) => acc + i.marketSum, 0) / 10000).toFixed(2);
+        const totalAmountHm = (filteredData.reduce((acc, i) => acc + i.amonut, 0) / 100).toFixed(2);
+        const upCount = filteredData.filter(i => i.changeRate > 0).length;
+        const downCount = filteredData.filter(i => i.changeRate < 0).length;
+        const upRatio = count > 0 ? ((upCount / count) * 100).toFixed(1) : 0;
+
+        document.getElementById('kpiCount').innerText = `${count.toLocaleString()} 개`;
+        document.getElementById('kpiMarketCap').innerText = `${totalCapTrillion}`;
+        document.getElementById('kpiAmount').innerText = `${totalAmountHm}`;
+        document.getElementById('kpiTrend').innerText = `${upCount}🔺 / ${downCount}🔻`;
+        document.getElementById('kpiTrendRatio').innerText = `상승 비중: ${upRatio}%`;
+    }
+
+    function renderCharts() {
+        if (!filteredData.length) return;
+
+        // 1. Market Cap Top 10 Bar
+        const top10Cap = [...filteredData].sort((a,b) => b.marketSum - a.marketSum).slice(0, 10).reverse();
+        Plotly.newPlot('chartMarketCapTop10', [{
+            type: 'bar', orientation: 'h',
+            x: top10Cap.map(i => (i.marketSum / 10000).toFixed(2)),
+            y: top10Cap.map(i => i.itemname),
+            marker: { color: '#38bdf8' }
+        }], { ...plotlyDarkLayout, height: 350 }, { responsive: true });
+
+        // 2. Amount Top 10 Bar
+        const top10Amount = [...filteredData].sort((a,b) => b.amonut - a.amonut).slice(0, 10).reverse();
+        Plotly.newPlot('chartAmountTop10', [{
+            type: 'bar', orientation: 'h',
+            x: top10Amount.map(i => (i.amonut / 100).toFixed(2)),
+            y: top10Amount.map(i => i.itemname),
+            marker: { color: '#fbbf24' }
+        }], { ...plotlyDarkLayout, height: 350 }, { responsive: true });
+
+        // 3. Rise Top 10 Bar
+        const top10Rise = [...filteredData].sort((a,b) => b.changeRate - a.changeRate).slice(0, 10).reverse();
+        Plotly.newPlot('chartRiseTop10', [{
+            type: 'bar', orientation: 'h',
+            x: top10Rise.map(i => i.changeRate),
+            y: top10Rise.map(i => i.itemname),
+            marker: { color: '#f43f5e' }
+        }], { ...plotlyDarkLayout, height: 350 }, { responsive: true });
+
+        // 4. Fall Top 10 Bar
+        const top10Fall = [...filteredData].sort((a,b) => a.changeRate - b.changeRate).slice(0, 10).reverse();
+        Plotly.newPlot('chartFallTop10', [{
+            type: 'bar', orientation: 'h',
+            x: top10Fall.map(i => i.changeRate),
+            y: top10Fall.map(i => i.itemname),
+            marker: { color: '#818cf8' }
+        }], { ...plotlyDarkLayout, height: 350 }, { responsive: true });
+
+        // 5. Scatter Plot (Market Cap vs Amount)
+        Plotly.newPlot('chartScatter', [{
+            type: 'scatter', mode: 'markers',
+            x: filteredData.map(i => (i.marketSum / 10000).toFixed(2)),
+            y: filteredData.map(i => (i.amonut / 100).toFixed(2)),
+            text: filteredData.map(i => i.itemname),
+            marker: {
+                size: filteredData.map(i => Math.max(6, Math.sqrt(i.quant) / 40)),
+                color: filteredData.map(i => i.changeRate),
+                colorscale: 'RdBu',
+                reversescale: true,
+                showscale: true
+            }
+        }], { 
+            ...plotlyDarkLayout, height: 420,
+            xaxis: { title: '시가총액 (조 원)', gridcolor: 'rgba(255,255,255,0.05)' },
+            yaxis: { title: '거래대금 (억 원)', gridcolor: 'rgba(255,255,255,0.05)' }
+        }, { responsive: true });
+
+        // 6. Category Pie Chart
+        const catMap = {};
+        filteredData.forEach(i => catMap[i.category] = (catMap[i.category] || 0) + i.marketSum);
+        Plotly.newPlot('chartCategoryPie', [{
+            type: 'pie',
+            values: Object.values(catMap).map(v => (v / 10000).toFixed(2)),
+            labels: Object.keys(catMap),
+            hole: 0.45,
+            marker: { colors: ['#38bdf8', '#818cf8', '#34d399', '#f43f5e', '#fbbf24', '#a78bfa', '#f472b6'] }
+        }], { ...plotlyDarkLayout, height: 420, margin: { t: 20, b: 20, l: 20, r: 20 } }, { responsive: true });
+
+        // 7. 3-Month Earn Rate Histogram
+        const earnData = filteredData.filter(i => i.threeMonthEarnRate !== null).map(i => i.threeMonthEarnRate);
+        Plotly.newPlot('chartEarnHist', [{
+            type: 'histogram',
+            x: earnData,
+            marker: { color: '#34d399' }
+        }], { ...plotlyDarkLayout, height: 380, xaxis: { title: '3개월 수익률 (%)' } }, { responsive: true });
+
+        // 8. Disparity Rate Histogram
+        const dispData = filteredData.filter(i => i.disparityRate !== null).map(i => i.disparityRate);
+        Plotly.newPlot('chartDisparityHist', [{
+            type: 'histogram',
+            x: dispData,
+            marker: { color: '#a78bfa' }
+        }], { ...plotlyDarkLayout, height: 380, xaxis: { title: 'NAV 괴리율 (%)' } }, { responsive: true });
+    }
+
+    function renderTable() {
+        const tbody = document.querySelector('#etfTable tbody');
+        document.getElementById('tableItemCount').innerText = filteredData.length;
+        tbody.innerHTML = '';
+
+        const displayItems = filteredData.slice(0, 100); // 렌더링 성능을 위해 상위 100개 우선 표시
+        displayItems.forEach(item => {
+            let tr = document.createElement('tr');
+            let trendClass = item.changeRate > 0 ? 'tag-up' : (item.changeRate < 0 ? 'tag-down' : 'tag-even');
+            let sign = item.changeRate > 0 ? '+' : '';
+            
+            tr.innerHTML = `
+                <td style="color: var(--text-secondary);">${item.itemcode}</td>
+                <td style="font-weight: 600;">${item.itemname}</td>
+                <td><span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem;">${item.category}</span></td>
+                <td>${item.nowVal.toLocaleString()}원</td>
+                <td class="${trendClass}">${sign}${item.changeVal.toLocaleString()}원</td>
+                <td class="${trendClass}">${sign}${item.changeRate.toFixed(2)}%</td>
+                <td>${item.nav ? item.nav.toLocaleString() + '원' : '-'}</td>
+                <td class="${item.disparityRate > 0 ? 'tag-up' : (item.disparityRate < 0 ? 'tag-down' : '')}">${item.disparityRate !== null ? item.disparityRate + '%' : '-'}</td>
+                <td>${item.marketSum.toLocaleString()}</td>
+                <td>${item.amonut.toLocaleString()}</td>
+                <td class="${item.threeMonthEarnRate > 0 ? 'tag-up' : (item.threeMonthEarnRate < 0 ? 'tag-down' : '')}">${item.threeMonthEarnRate !== null ? item.threeMonthEarnRate + '%' : '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+        
+        // Tab 전환 시 Plotly 차트 리사이즈 이벤트 트리거
+        window.dispatchEvent(new Event('resize'));
+    }
+
+    function exportCSV() {
+        if (!filteredData.length) return;
+        let headers = ["종목코드", "ETF명", "카테고리", "현재가", "전일대비", "등락률", "NAV", "괴리율", "시가총액(억)", "거래대금(백만)", "3개월수익률"];
+        let rows = filteredData.map(i => [
+            i.itemcode, `"${i.itemname}"`, i.category, i.nowVal, i.changeVal, i.changeRate, i.nav, i.disparityRate, i.marketSum, i.amonut, i.threeMonthEarnRate
+        ]);
+        
+        let csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `etf_eda_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+    }
+
+    // Auto load on start
+    window.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
