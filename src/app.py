@@ -204,6 +204,10 @@ def main() -> None:
     st.markdown('<div class="main-header">📈 네이버 ETF 실시간 EDA 대시보드</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-header">별도 파일 저장 없이 메모리 상에서 실시간 수집된 <b>{len(df)}개 ETF 종목</b>의 종합 EDA 리포트를 조회합니다.</div>', unsafe_allow_html=True)
 
+    if filtered_df.empty:
+        st.warning("⚠️ 선택하신 검색어 또는 필터 조건에 해당하는 ETF 종목이 없습니다. 사이드바의 필터 조건을 조정해 주세요.")
+        return
+
     # 3. 주요 KPI 메트릭 카드
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -419,7 +423,7 @@ def main() -> None:
                 'nav': '{:,.2f}원',
                 'disparityRate': '{:+.2f}%',
                 'changeRate': '{:+.2f}%'
-            }).background_gradient(subset=['disparityRate'], cmap='vlag'),
+            }).background_gradient(subset=['disparityRate'], cmap='coolwarm'),
             use_container_width=True
         )
 
